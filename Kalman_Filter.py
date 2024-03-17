@@ -59,7 +59,7 @@ t_end = 10
 t = np.arange(t_start, t_end, dt) # t has 1000 steps
 
 #set up system
-m = 1
+m = 2.5
 k = 10
 c = 3
 A = 1
@@ -81,7 +81,7 @@ t_sol = sol.t
 x_sol = sol.y
 r_sol = x_sol[0]
 dotr_sol = x_sol[1]
-
+a_sol = (1/m)*( - k*r_sol - c*dotr_sol)
 #%%
 # PLOTTING TRAJECTORY WITH ZERO INPUT
 
@@ -117,6 +117,7 @@ x_sol2 = sol2.y
 r_sol2 = x_sol2[0]
 dotr_sol2 = x_sol2[1]
 u = sys.input(t_sol2)
+a_sol2 = (1/m)*(u - k*r_sol2 - c*dotr_sol2)
 #%%
 # PLOTTING TRAJECTORY WITH SINUSOIDAL INPUT
 
@@ -139,19 +140,32 @@ plt.show()
 
 #%%
 # GENERATING SENSOR MEASUREMENTS
-include_noise = False # toggle to turn on and off noise to test the filter
-R = 0.15 # position noise variance
-Q = 0.15 # acceleration noise variance
+include_noise = True # toggle to turn on and off noise to test the filter
+include_input = False
+R = 0.05 # position noise variance
+Q = 0.05 # acceleration noise variance
+
 w = np.sqrt(Q)*np.random.randn(len(t))
 v = np.sqrt(R)*np.random.randn(len(t))
-"""
-For random samples from N(\mu, \sigma^2), use:
-sigma * np.random.randn(...) + mu
-"""
-#noisy sensor measurements
-a_sol = (1/m)*(u - k*r_sol - c*dotr_sol)
-a_n = (1/m)*(u - k*r_sol - c*dotr_sol) + w #change input depending on if zero input or sinusoidal
-y_n = r_sol + v 
+if include_input:
+    if not include_noise:
+        w = np.zeros((len(t),1))
+        v = np.zeros((len(t),1))
+        a_n = a_sol  #change input depending on if zero input or sinusoidal
+        y_n = r_sol 
+    else:
+        a_n = a_sol + w 
+        y_n = r_sol + v 
+else:
+    if not include_noise:
+        w = np.zeros((len(t),1))
+        v = np.zeros((len(t),1))
+        a_n = a_sol2  #change input depending on if zero input or sinusoidal
+        y_n = r_sol2 
+    else:
+        a_n = a_sol2 + w 
+        y_n = r_sol2 + v 
+
 
 #%%
 # PLOTTING TRAJECTORY WITH SINUSOIDAL INPUT
@@ -210,7 +224,7 @@ sys = control.StateSpace(A,B,C,D)
 
 # Discretize system
 
-T = 0.1 #CHECK IF THIS IS OKAY
+T = 0.001 #CHECK IF THIS IS OKAY
 sys_n = sys.sample(T,method = 'zoh')
 print("sys_n is ", sys_n)
 xi = np.block([[A, L@(Q*(L.T)), np.zeros((2,2)), np.zeros((2,1))], [np.zeros((2,2)), -A.T, np.zeros((2,2)), np.zeros((2,1))], [np.zeros((2,2)), np.zeros((2,2)), A, B], [np.zeros((1,2)),np.zeros((1,2)),np.zeros((1,2)),np.zeros((1,1))]])
@@ -225,6 +239,7 @@ A_d = upsilon_11
 B_d = np.array(upsilon_34) #why is it transposed?
 B_d = np.array([[upsilon_34[0]], [upsilon_34[1]]])
 Q_d = upsilon_12@upsilon_11.T
+R_d = R/T
 
 #%%
 # KALMAN FILTER
@@ -249,15 +264,15 @@ P_hat0 = np.eye(2,2)
 #THIS ISNT BEST WAY TO DO THIS !!!!!!!!!!!!!
 # ARRAYS IN ARRAYS
 # Making a list to add all estimated states and covariances at each step into
+
 x_hat_k = []
-x_hat_1 = []
-x_hat_2 = []
 P_hat_k = []
+sigma3_k = []
 
 x_hat_k.append(x_hat0.flatten())
 P_hat_k.append(P_hat0)
-x_hat_1.append(x_hat0[0,0])
-x_hat_2.append(x_hat0[1,0])
+U0, S0, V0 = np.linalg.svd(P_hat0)
+sigma3_k.append(S0)
 
 x_k_1 = x_hat0
 P_k_1 = P_hat0
@@ -271,9 +286,11 @@ for i in range(0, steps-1): #fix range
     xk_p = A_d @ x_k_1 + B_d*a_n[i] #x_k+1 = (A_k)(x_k) + (B_k)(u_k)
     Pk_p = A_d @ P_k_1 @ A_d.T + Q_d  #P_k+1 = (A_k)(P_k)(A_k).T + Q_k
     # correction
-    K_k = Pk_p @ (C.reshape(1, -1)).T *(C @ Pk_p @ (C.reshape(1, -1)).T + R)**(-1)  ##### CHECK THIS R
+    K_k = Pk_p @ (C.reshape(1, -1)).T *(C @ Pk_p @ (C.reshape(1, -1)).T + R_d)**(-1)  ##### CHECK THIS R
     x_k = xk_p + K_k *(y_n[i] - C @ xk_p) #x_k+1|k+1 = x_k+1|k + K_k+1(y_k+1 - (C_k+1)(x_k+1|k))
-    P_k = (np.eye(2,2) - K_k @ C.reshape(1, -1)) @ Pk_p @(np.eye(2,2) - K_k @ C.reshape(1, -1)).T + K_k*R*K_k.T # P_k+1|k+1 = (I - (K_k+1)(C_k+1))P_k+1|k(I - (K_k+1)(C_k+1)).T + (K_k+1)(R_k+1)(K_k+1).T
+    
+    P_k = (np.eye(2,2) - K_k @ C.reshape(1, -1)) @ Pk_p @(np.eye(2,2) - K_k @ C.reshape(1, -1)).T + K_k*R_d*K_k.T # P_k+1|k+1 = (I - (K_k+1)(C_k+1))P_k+1|k(I - (K_k+1)(C_k+1)).T + (K_k+1)(R_k+1)(K_k+1).T
+    #P_k = (np.eye(2,2) - K_k @ C.reshape(1, -1)) @ Pk_p
   ############ CHECK THIS R
    
     # next iteration
@@ -282,6 +299,8 @@ for i in range(0, steps-1): #fix range
 
     x_hat_k.append(x_k.flatten())
     P_hat_k.append(P_k)
+    U, S, V = np.linalg.svd(P_k)
+    sigma3_k.append(3*np.sqrt(S))
 
     if i == 0:
         print("Predicted")
@@ -290,9 +309,13 @@ for i in range(0, steps-1): #fix range
         print("Estimated")
         print("x_k: ",x_k)
         print("P_k: ",P_k)
+        print("3sqrt(S): ", 3*np.sqrt(S))
 
 x1_hat = np.array(x_hat_k)[:, 0]
 x2_hat = np.array(x_hat_k)[:, 1]
+sigma3_1 = np.array(sigma3_k)[:,0]
+sigma3_2 = np.array(sigma3_k)[:,1]
+
 
 #%%
 # PLOT ESTIMATED AND TRUE STATES
@@ -326,6 +349,8 @@ plt.show()
 error_x1 = r_sol - x1_hat
 error_x2 = dotr_sol - x2_hat
 
+
+
 fig, ax = plt.subplots(2, 1)
 # Format axes
 for a in np.ravel(ax):
@@ -339,11 +364,16 @@ plt.rc('grid', linestyle='--')
 
 # Plot data
 ax[0].plot(t_steps, error_x1, label='estimated position', color='C2')
+ax[0].plot(t_steps, sigma3_1, label = r'$3\sigma_1$', color = 'C1')
+ax[0].plot(t_steps, -sigma3_1, color = 'C1')
 ax[1].plot(t_steps, error_x2, label='estimated velocity', color='C2')
+ax[1].plot(t_steps, sigma3_2, label = r'$3\sigma_2$', color = 'C1')
+ax[1].plot(t_steps, -sigma3_2, color = 'C1')
 
 ax[0].legend(loc='upper right')
 ax[1].legend(loc='upper right')
-fig.tight_layout()
 plt.show()
 
 # %%
+
+# Implement Kalman with position measurements at 1/10th the frequency of accelerometer measurements and repeat plots
