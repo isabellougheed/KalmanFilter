@@ -4,50 +4,96 @@ import control
 from matplotlib import pyplot as plt
 from scipy import integrate
 from scipy import linalg
+from MSD import MSD_System
 
-class MSD_System:
-    def __init__(self, m, c, k, A, w):
-        #constructor
-        self.m = m
-        self.c = c
-        self.k = k
+class Kalman_Filter:
+    def __init__(self, A, B, L, C, D, Q, R):
         self.A = A
-        self.w = w
+        self.B = B
+        self.L = L
+        self.C = C
+        self.D = D
+        self.Q = Q
+        self.R = R
+        # I'll initialize these after discretization
+        self.A_d = 0
+        self.B_d = 0
+        self.Q_d = 0
+        self.R_d = 0
 
-    def f1(self, t, x):
-        """Method for integration of ODE.
+    def discretize(self,T):
+        # building large matrix
+        xi = np.block([[A, L@(Q*(L.T)), np.zeros((2,2)), np.zeros((2,1))], [np.zeros((2,2)), -A.T, np.zeros((2,2)), np.zeros((2,1))], [np.zeros((2,2)), np.zeros((2,2)), A, B], [np.zeros((1,2)),np.zeros((1,2)),np.zeros((1,2)),np.zeros((1,1))]])
+        upsilon = linalg.expm(xi*T) 
 
-        dot_x = f(x, 0) given x0, given no input f(t)
-        """
-        # Extract states.
-        dot_r = x[1]
-        ddot_r = (-self.c*x[1]-self.k*x[0])/self.m 
-        dot_x = np.vstack((dot_r, ddot_r))
-        return dot_x.ravel()  # flatten the array
-        #return np.array([[dot_r], [ddot_r]])
+        # extract A_d, B_d, Q_d
+        upsilon_11 = upsilon[0:2, 0:2]
+        upsilon_12 = upsilon[0:2, 2:4]
+        upsilon_34 = upsilon[4:6, 6]
+        A_d = upsilon_11
+        B_d = np.array(upsilon_34) #it transposes for some reason
+        B_d = np.array([[upsilon_34[0]], [upsilon_34[1]]])
+        Q_d = upsilon_12@upsilon_11.T
+        R_d = R/T
+
+        #initialize parameters
+        self.A_d = A_d
+        self.B_d = B_d
+        self.Q_d = Q_d
+        self.R_d = R_d
+        return A_d, B_d, Q_d, R_d
     
-    def f2(self, t, x):
-        """Method for integration of ODE.
+    def filter(self, a_n, y_n, x_hat0, P_hat0, steps, frequ_a, frequ_y):
+        # Making a list to add all estimated states and covariances at each step into
+        x_hat_k = []
+        P_hat_k = []
+        sigma3_k = []
 
-        dot_x = f(x, u) given x0, given a sinusoidal input
-        """
-        # Extract states.
-        dot_r = x[1]
-        ddot_r = ((-self.c*x[1]-self.k*x[0])/self.m) + self.A*np.sin(self.w*t)
-        dot_x = np.vstack((dot_r, ddot_r))
-        return dot_x.ravel()  # flatten the array
-        #return np.array([[dot_r], [ddot_r]])
+        # initializing lists with initial guesses
+        x_hat_k.append(x_hat0.flatten())
+        P_hat_k.append(P_hat0)
+        U0, S0, V0 = np.linalg.svd(P_hat0)
+        sigma3_k.append(S0)
 
-    def input(self, t):
-        return self.A*np.sin(self.w*t) 
-    
-    def state_space(self):
-        # ground truth state space
-        A = np.array([[0,1], [-self.k/self.m, -self.c/self.m]])
-        B = np.array([[0],[1]])
-        C = np.eye(2,2)
-        D = np.zeros((2,1))
-        return control.StateSpace(A,B,C,D)
+        #Setting up x_k-1, P_k-1
+        x_k_1 = x_hat0
+        P_k_1 = P_hat0
+
+        for i in range(0, steps-1):
+            # prediction
+            xk_p = A_d @ x_k_1 + B_d*a_n[i] #x_k+1 = (A_k)(x_k) + (B_k)(u_k)
+            Pk_p = A_d @ P_k_1 @ A_d.T + Q_d  #P_k+1 = (A_k)(P_k)(A_k).T + Q_k
+
+            # correction
+            K_k = Pk_p @ (C.reshape(1, -1)).T *(C @ Pk_p @ (C.reshape(1, -1)).T + R_d)**(-1) 
+
+            if frequ_a != frequ_y:
+                # if sampling frequencies not the same, can't do correction every step because missing y measurements
+                if i % (frequ_a/frequ_y) == 0:
+                    # if this step has a y measurement, can do correction
+                    x_k = xk_p + K_k *(y_n[i] - C @ xk_p) #x_k+1|k+1 = x_k+1|k + K_k+1(y_k+1 - (C_k+1)(x_k+1|k))
+                    P_k = (np.eye(2,2) - K_k @ C.reshape(1, -1)) @ Pk_p @(np.eye(2,2) - K_k @ C.reshape(1, -1)).T + K_k*R_d*K_k.T # P_k+1|k+1 = (I - (K_k+1)(C_k+1))P_k+1|k(I - (K_k+1)(C_k+1)).T + (K_k+1)(R_k+1)(K_k+1).T
+                else:
+                    # skip correction 
+                    x_k = xk_p
+                    P_k = Pk_p
+            else:
+                # can do correction every time if a,y have same sampling rate
+                x_k = xk_p + K_k *(y_n[i] - C @ xk_p) #x_k+1|k+1 = x_k+1|k + K_k+1(y_k+1 - (C_k+1)(x_k+1|k))
+                P_k = (np.eye(2,2) - K_k @ C.reshape(1, -1)) @ Pk_p @(np.eye(2,2) - K_k @ C.reshape(1, -1)).T + K_k*R_d*K_k.T # P_k+1|k+1 = (I - (K_k+1)(C_k+1))P_k+1|k(I - (K_k+1)(C_k+1)).T + (K_k+1)(R_k+1)(K_k+1).T
+
+            # next iteration
+            x_k_1 = x_k
+            P_k_1 = P_k
+
+            # add to arrays
+            x_hat_k.append(x_k.flatten())
+            P_hat_k.append(P_k)
+            U, S, V = np.linalg.svd(P_k)
+            sigma3_k.append(3*np.sqrt(S))
+
+        return x_hat_k, P_hat_k, sigma3_k
+
 
 # %%
 # GENERATING GROUND TRUTH DATA FOR NO INPUT
@@ -56,7 +102,7 @@ class MSD_System:
 dt = 1e-3
 t_start = 0
 t_end = 10
-t = np.arange(t_start, t_end, dt) # t has 1000 steps
+t = np.arange(t_start, t_end, dt) # t has 10000 steps
 
 #set up system
 m = 2.5
@@ -67,7 +113,6 @@ w = 5
 sys = MSD_System(m,c,k,A,w)
 x0 = np.array([[5], [0]])
 
-#sol = integrate.RK45(fun = sys.f, t0 = t_start, y0 = x0.ravel(), t_bound = t_end)
 sol = integrate.solve_ivp(
     sys.f1,
     (t_start, t_end),
@@ -142,8 +187,8 @@ plt.show()
 # GENERATING SENSOR MEASUREMENTS
 include_noise = True # toggle to turn on and off noise to test the filter
 include_input = False
-R = 0.05 # position noise variance
-Q = 0.05 # acceleration noise variance
+R = 0.01 # position noise variance
+Q = 0.01 # acceleration noise variance
 
 w = np.sqrt(Q)*np.random.randn(len(t))
 v = np.sqrt(R)*np.random.randn(len(t))
@@ -169,8 +214,6 @@ else:
 
 #%%
 # PLOTTING TRAJECTORY WITH SINUSOIDAL INPUT
-
-# Plotting parameters
 
 fig, ax = plt.subplots(2, 1)
 # Format axes
@@ -210,36 +253,16 @@ Gd_ss = control.ss(Gd) # DT s.s. model
 
 """
 # rewrite system with noise
-"""
-DOUBLE CHECK MY REWRITTEN SYSTEM
-"""
 A = np.array([[0,1],[0,0]])
 B = np.array([[0],[1]])
 L = np.array([[0],[1]])
-B_a_w = np.array([[0,0], [1,1]]) # just so I can discretize with zoh tools, I will separate after
-                                # IS THIS OKAY ??????????????
 C = np.array([1,0])
 D = 0
-sys = control.StateSpace(A,B,C,D)
+kf = Kalman_Filter(A,B,L,C,D,Q,R)
 
 # Discretize system
-
 T = 0.001 #CHECK IF THIS IS OKAY
-sys_n = sys.sample(T,method = 'zoh')
-print("sys_n is ", sys_n)
-xi = np.block([[A, L@(Q*(L.T)), np.zeros((2,2)), np.zeros((2,1))], [np.zeros((2,2)), -A.T, np.zeros((2,2)), np.zeros((2,1))], [np.zeros((2,2)), np.zeros((2,2)), A, B], [np.zeros((1,2)),np.zeros((1,2)),np.zeros((1,2)),np.zeros((1,1))]])
-
-upsilon = linalg.expm(xi*T)
-print("upsilon is ", upsilon)
-
-upsilon_11 = upsilon[0:2, 0:2]
-upsilon_12 = upsilon[0:2, 2:4]
-upsilon_34 = upsilon[4:6, 6]
-A_d = upsilon_11
-B_d = np.array(upsilon_34) #why is it transposed?
-B_d = np.array([[upsilon_34[0]], [upsilon_34[1]]])
-Q_d = upsilon_12@upsilon_11.T
-R_d = R/T
+A_d, B_d, Q_d, R_d = kf.discretize(T)
 
 #%%
 # KALMAN FILTER
@@ -258,64 +281,18 @@ d/dt[x, x-hatx].T = [[(A-B K_r), B K_r],[0, (A - K_f C)]] [x, x-hatx].T + [w_d, 
 the scenes and uses a P estimate and returns xhat
 
 """
+# Initial guesses
 x_hat0 = np.array([[5], [0]])
 P_hat0 = np.eye(2,2)
+steps = 10000 # because 10000 steps in 10 s range with dt = 1e-3
 
-#THIS ISNT BEST WAY TO DO THIS !!!!!!!!!!!!!
-# ARRAYS IN ARRAYS
-# Making a list to add all estimated states and covariances at each step into
+x_hat_k, P_hat_k, sigma3_k = kf.filter(a_n, y_n,x_hat0, P_hat0, steps, 1, 1)
 
-x_hat_k = []
-P_hat_k = []
-sigma3_k = []
-
-x_hat_k.append(x_hat0.flatten())
-P_hat_k.append(P_hat0)
-U0, S0, V0 = np.linalg.svd(P_hat0)
-sigma3_k.append(S0)
-
-x_k_1 = x_hat0
-P_k_1 = P_hat0
-# SHOULD THESE BE THE MEASURED a_n AND y_n ?????
-a_k_1 = (1/m)*(u - k*x_hat0[0] - c*x_hat0[1]) + w[0]
-y_k = C@x_hat0 + v[0] 
-
-steps = 10000
-for i in range(0, steps-1): #fix range
-    # prediction
-    xk_p = A_d @ x_k_1 + B_d*a_n[i] #x_k+1 = (A_k)(x_k) + (B_k)(u_k)
-    Pk_p = A_d @ P_k_1 @ A_d.T + Q_d  #P_k+1 = (A_k)(P_k)(A_k).T + Q_k
-    # correction
-    K_k = Pk_p @ (C.reshape(1, -1)).T *(C @ Pk_p @ (C.reshape(1, -1)).T + R_d)**(-1)  ##### CHECK THIS R
-    x_k = xk_p + K_k *(y_n[i] - C @ xk_p) #x_k+1|k+1 = x_k+1|k + K_k+1(y_k+1 - (C_k+1)(x_k+1|k))
-    
-    P_k = (np.eye(2,2) - K_k @ C.reshape(1, -1)) @ Pk_p @(np.eye(2,2) - K_k @ C.reshape(1, -1)).T + K_k*R_d*K_k.T # P_k+1|k+1 = (I - (K_k+1)(C_k+1))P_k+1|k(I - (K_k+1)(C_k+1)).T + (K_k+1)(R_k+1)(K_k+1).T
-    #P_k = (np.eye(2,2) - K_k @ C.reshape(1, -1)) @ Pk_p
-  ############ CHECK THIS R
-   
-    # next iteration
-    x_k_1 = x_k
-    P_k_1 = P_k
-
-    x_hat_k.append(x_k.flatten())
-    P_hat_k.append(P_k)
-    U, S, V = np.linalg.svd(P_k)
-    sigma3_k.append(3*np.sqrt(S))
-
-    if i == 0:
-        print("Predicted")
-        print("xk_p: ",xk_p)
-        print("Pk_p: ",Pk_p)
-        print("Estimated")
-        print("x_k: ",x_k)
-        print("P_k: ",P_k)
-        print("3sqrt(S): ", 3*np.sqrt(S))
-
+# Extract out individual states
 x1_hat = np.array(x_hat_k)[:, 0]
 x2_hat = np.array(x_hat_k)[:, 1]
 sigma3_1 = np.array(sigma3_k)[:,0]
 sigma3_2 = np.array(sigma3_k)[:,1]
-
 
 #%%
 # PLOT ESTIMATED AND TRUE STATES
@@ -349,8 +326,6 @@ plt.show()
 error_x1 = r_sol - x1_hat
 error_x2 = dotr_sol - x2_hat
 
-
-
 fig, ax = plt.subplots(2, 1)
 # Format axes
 for a in np.ravel(ax):
@@ -377,3 +352,70 @@ plt.show()
 # %%
 
 # Implement Kalman with position measurements at 1/10th the frequency of accelerometer measurements and repeat plots
+
+# Can predict at every step but can only correct every 10 steps
+
+# Initial guesses
+
+x_hat_k2, P_hat_k2, sigma3_k2 = kf.filter(a_n, y_n,x_hat0, P_hat0, steps, 10, 1)
+
+# Extract out individual states
+x1_hat2 = np.array(x_hat_k2)[:, 0]
+x2_hat2 = np.array(x_hat_k2)[:, 1]
+sigma3_1_2 = np.array(sigma3_k2)[:,0]
+sigma3_2_2 = np.array(sigma3_k2)[:,1]
+
+#%%
+# PLOT ESTIMATED AND TRUE STATES WITH DIFFERENT SAMPLING FREQUENCY
+fig, ax = plt.subplots(2, 1)
+# Format axes
+for a in np.ravel(ax):
+    a.set_xlabel(r'$t$ (s)')
+ax[0].set_ylabel(r'$x_1(t)$ (units)')
+ax[1].set_ylabel(r'$x_2(t)$ (units/s)')
+
+plt.rc('lines', linewidth=2)
+plt.rc('axes', grid=True)
+plt.rc('grid', linestyle='--')
+
+# Plot data
+t_steps = np.arange(steps) * dt
+#ax[0].plot(t, y_n, label='noisy position measurement', color='C1')
+ax[0].plot(t, r_sol, label='true position', color='C0')
+ax[0].plot(t_steps, x1_hat2, label='estimated position', color='C2')
+
+ax[1].plot(t, dotr_sol, label='true velocity', color='C0')
+ax[1].plot(t_steps, x2_hat2, label='estimated velocity', color='C2')
+
+ax[0].legend(loc='upper right')
+ax[1].legend(loc='upper right')
+fig.tight_layout()
+plt.show()
+
+# %%
+# PLOT ERROR WITH DIFFERENT SAMPLING FREQUENCY
+error_x1_2 = r_sol - x1_hat2
+error_x2_2 = dotr_sol - x2_hat2
+
+fig, ax = plt.subplots(2, 1)
+# Format axes
+for a in np.ravel(ax):
+    a.set_xlabel(r'$t$ (s)')
+ax[0].set_ylabel(r'$e_x1(t)$ (units)')
+ax[1].set_ylabel(r'$e_x2(t)$ (units/s)')
+
+plt.rc('lines', linewidth=2)
+plt.rc('axes', grid=True)
+plt.rc('grid', linestyle='--')
+
+# Plot data
+ax[0].plot(t_steps, error_x1_2, label='estimated position', color='C2')
+ax[0].plot(t_steps, sigma3_1_2, label = r'$3\sigma_1$', color = 'C1')
+ax[0].plot(t_steps, -sigma3_1_2, color = 'C1')
+ax[1].plot(t_steps, error_x2_2, label='estimated velocity', color='C2')
+ax[1].plot(t_steps, sigma3_2_2, label = r'$3\sigma_2$', color = 'C1')
+ax[1].plot(t_steps, -sigma3_2_2, color = 'C1')
+
+ax[0].legend(loc='upper right')
+ax[1].legend(loc='upper right')
+plt.show()
