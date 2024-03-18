@@ -310,11 +310,11 @@ plt.rc('grid', linestyle='--')
 # Plot data
 t_steps = np.arange(steps) * dt
 #ax[0].plot(t, y_n, label='noisy position measurement', color='C1')
-ax[0].plot(t, r_sol, label='true position', color='C0')
-ax[0].plot(t_steps, x1_hat, label='estimated position', color='C2')
+ax[0].plot(t, r_sol, label='true position', color='red')
+ax[0].plot(t_steps, x1_hat, label='estimated position', color='C0')
 
-ax[1].plot(t, dotr_sol, label='true velocity', color='C0')
-ax[1].plot(t_steps, x2_hat, label='estimated velocity', color='C2')
+ax[1].plot(t, dotr_sol, label='true velocity', color='red')
+ax[1].plot(t_steps, x2_hat, label='estimated velocity', color='C0')
 
 ax[0].legend(loc='upper right')
 ax[1].legend(loc='upper right')
@@ -338,10 +338,10 @@ plt.rc('axes', grid=True)
 plt.rc('grid', linestyle='--')
 
 # Plot data
-ax[0].plot(t_steps, error_x1, label='estimated position', color='C2')
+ax[0].plot(t_steps, error_x1, label='estimated position', color='C0')
 ax[0].plot(t_steps, sigma3_1, label = r'$3\sigma_1$', color = 'C1')
 ax[0].plot(t_steps, -sigma3_1, color = 'C1')
-ax[1].plot(t_steps, error_x2, label='estimated velocity', color='C2')
+ax[1].plot(t_steps, error_x2, label='estimated velocity', color='C0')
 ax[1].plot(t_steps, sigma3_2, label = r'$3\sigma_2$', color = 'C1')
 ax[1].plot(t_steps, -sigma3_2, color = 'C1')
 
@@ -381,11 +381,11 @@ plt.rc('grid', linestyle='--')
 # Plot data
 t_steps = np.arange(steps) * dt
 #ax[0].plot(t, y_n, label='noisy position measurement', color='C1')
-ax[0].plot(t, r_sol, label='true position', color='C0')
-ax[0].plot(t_steps, x1_hat2, label='estimated position', color='C2')
+ax[0].plot(t, r_sol, label='true position', color='red')
+ax[0].plot(t_steps, x1_hat2, label='estimated position', color='C0')
 
-ax[1].plot(t, dotr_sol, label='true velocity', color='C0')
-ax[1].plot(t_steps, x2_hat2, label='estimated velocity', color='C2')
+ax[1].plot(t, dotr_sol, label='true velocity', color='red')
+ax[1].plot(t_steps, x2_hat2, label='estimated velocity', color='C0')
 
 ax[0].legend(loc='upper right')
 ax[1].legend(loc='upper right')
@@ -409,10 +409,10 @@ plt.rc('axes', grid=True)
 plt.rc('grid', linestyle='--')
 
 # Plot data
-ax[0].plot(t_steps, error_x1_2, label='estimated position', color='C2')
+ax[0].plot(t_steps, error_x1_2, label='estimated position', color='C0')
 ax[0].plot(t_steps, sigma3_1_2, label = r'$3\sigma_1$', color = 'C1')
 ax[0].plot(t_steps, -sigma3_1_2, color = 'C1')
-ax[1].plot(t_steps, error_x2_2, label='estimated velocity', color='C2')
+ax[1].plot(t_steps, error_x2_2, label='estimated velocity', color='C0')
 ax[1].plot(t_steps, sigma3_2_2, label = r'$3\sigma_2$', color = 'C1')
 ax[1].plot(t_steps, -sigma3_2_2, color = 'C1')
 
