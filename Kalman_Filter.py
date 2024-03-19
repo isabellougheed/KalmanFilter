@@ -267,8 +267,10 @@ A_d, B_d, Q_d, R_d = kf.discretize(T)
 
 """
 # Initial guesses
-x_hat0 = np.array([[5], [0]])
-P_hat0 = np.eye(2,2)
+#x_hat0 = np.array([[5], [0]]) # true value
+#P_hat0 = np.eye(2,2)
+x_hat0 = np.array([[4], [1]]) # somewhat close to true value
+P_hat0 = np.array([[0.9,0], [0,0.9]])
 steps = int((t_end-t_start)/dt) # 10000 steps in 10 s range with dt = 1e-3
 x_hat_k, P_hat_k, sigma3_k = kf.filter(a_n, y_n,x_hat0, P_hat0, steps, 1, 1)
 
