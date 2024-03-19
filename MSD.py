@@ -5,6 +5,14 @@ from matplotlib import pyplot as plt
 from scipy import integrate
 from scipy import linalg
 
+"""
+
+This class is only to set up the system.
+
+You don't need to run this file, it is just used by Kalman_Filter.py
+
+"""
+
 class MSD_System:
     def __init__(self, m, c, k, A, w):
         #constructor

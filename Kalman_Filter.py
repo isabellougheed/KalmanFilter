@@ -6,6 +6,13 @@ from scipy import integrate
 from scipy import linalg
 from MSD import MSD_System
 
+"""
+This file is to set up the Kalman filter for the mass spring damper system set up in MSD.py
+
+All plotting was done in this file.
+
+"""
+
 class Kalman_Filter:
     def __init__(self, A, B, L, C, D, Q, R):
         self.A = A
@@ -85,11 +92,12 @@ class Kalman_Filter:
             # next iteration
             x_k_1 = x_k
             P_k_1 = P_k
-
+        
             # add to arrays
             x_hat_k.append(x_k.flatten())
             P_hat_k.append(P_k)
-            U, S, V = np.linalg.svd(P_k)
+            #U, S, V = np.linalg.svd(P_k) #changes order of singular values
+            S = np.diag(P_k) #try this instead
             sigma3_k.append(3*np.sqrt(S))
 
         return x_hat_k, P_hat_k, sigma3_k
@@ -106,7 +114,7 @@ t = np.arange(t_start, t_end, dt) # t has 10000 steps
 
 #set up system
 m = 2.5
-k = 10
+k = 30
 c = 3
 A = 1
 w = 5
@@ -238,20 +246,6 @@ plt.show()
 #%%
 # DISCRETIZATION
 
-# New state space system
-
-# Zero order hold
-"""
-- get CT TF from s.s model (G)
-
-T = 0.1 # assoc. with accelerometer meas. frequency
-        # 1/T > 2*w_max,accelerometer
-Gd = G.sample(T, method = 'zoh') # DT TF
-Gd_ss = control.ss(Gd) # DT s.s. model
-
-- Van Loan's method for Q_k-1
-
-"""
 # rewrite system with noise
 A = np.array([[0,1],[0,0]])
 B = np.array([[0],[1]])
@@ -261,31 +255,21 @@ D = 0
 kf = Kalman_Filter(A,B,L,C,D,Q,R)
 
 # Discretize system
-T = 0.001 #CHECK IF THIS IS OKAY
+T = dt 
 A_d, B_d, Q_d, R_d = kf.discretize(T)
 
 #%%
 # KALMAN FILTER
 """
 - Like an observer but uses error covariances to optimally estimate states
-- process noise: w_d Gaussian disturbance with covariance v_d (nxn matrix)
-- meas. noise: v Gaussian noise with covariance v_n (nxn matrix)
-
-L,P,E = control.dlqe(A,L,C,QN,RN) #linear quadratic estimator for discrete time systems
-K_f = L #Kalman estimator gain
-# P is soln to Riccati eqn, E is eig(A-LC)
-
-d/dt[x, x-hatx].T = [[(A-B K_r), B K_r],[0, (A - K_f C)]] [x, x-hatx].T + [w_d, w_n].T
-
-- maybe create_estimator_iosystem could be useful because this is what dlqe is doing behind
-the scenes and uses a P estimate and returns xhat
+- process noise: w_d disturbance with covariance v_d (nxn matrix)
+- meas. noise: v noise with covariance v_n (nxn matrix)
 
 """
 # Initial guesses
 x_hat0 = np.array([[5], [0]])
 P_hat0 = np.eye(2,2)
-steps = 10000 # because 10000 steps in 10 s range with dt = 1e-3
-
+steps = int((t_end-t_start)/dt) # 10000 steps in 10 s range with dt = 1e-3
 x_hat_k, P_hat_k, sigma3_k = kf.filter(a_n, y_n,x_hat0, P_hat0, steps, 1, 1)
 
 # Extract out individual states
