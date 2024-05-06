@@ -40,7 +40,7 @@ class Kalman_Filter:
         A_d = upsilon_11
         B_d = np.array(upsilon_34) #it transposes for some reason
         B_d = np.array([[upsilon_34[0]], [upsilon_34[1]]])
-        Q_d = upsilon_12@upsilon_11.T
+        Q_d = upsilon_12@(upsilon_11.T)
         R_d = R/T
 
         #initialize parameters
@@ -96,8 +96,7 @@ class Kalman_Filter:
             # add to arrays
             x_hat_k.append(x_k.flatten())
             P_hat_k.append(P_k)
-            #U, S, V = np.linalg.svd(P_k) #changes order of singular values
-            S = np.diag(P_k) #try this instead
+            S = np.diag(P_k) 
             sigma3_k.append(3*np.sqrt(S))
 
         return x_hat_k, P_hat_k, sigma3_k
@@ -191,15 +190,34 @@ ax.legend(loc='upper right')
 fig.tight_layout()
 plt.show()
 
+
+#%%
+# DISCRETIZATION
+
+# rewrite system with noise
+A = np.array([[0,1],[0,0]])
+B = np.array([[0],[1]])
+L = np.array([[0],[1]])
+C = np.array([1,0])
+D = 0   # position noise variance
+Q = 0.01  # acceleration noise variance
+R = 0.001
+kf = Kalman_Filter(A,B,L,C,D,Q,R)
+
+# Discretize system
+T = dt 
+A_d, B_d, Q_d, R_d = kf.discretize(T)
+
 #%%
 # GENERATING SENSOR MEASUREMENTS
 include_noise = True # toggle to turn on and off noise to test the filter
 include_input = False
-R = 0.01 # position noise variance
-Q = 0.01 # acceleration noise variance
 
-w = np.sqrt(Q)*np.random.randn(len(t))
-v = np.sqrt(R)*np.random.randn(len(t))
+w1 = np.sqrt(Q_d[0][0])*np.random.randn(len(t))
+w2 = np.sqrt(Q_d[0][1])*np.random.randn(len(t))
+w = np.block([[w1], [w2]])
+#w = np.sqrt(Q)*np.random.randn(len(t))
+v = np.sqrt(R_d)*np.random.randn(len(t))
 if include_input:
     if not include_noise:
         w = np.zeros((len(t),1))
@@ -207,16 +225,18 @@ if include_input:
         a_n = a_sol  #change input depending on if zero input or sinusoidal
         y_n = r_sol 
     else:
-        a_n = a_sol + w 
+        a_n = a_sol + w2 
         y_n = r_sol + v 
 else:
+    a_sol = a_sol2
+    r_sol = r_sol2
     if not include_noise:
         w = np.zeros((len(t),1))
         v = np.zeros((len(t),1))
         a_n = a_sol2  #change input depending on if zero input or sinusoidal
         y_n = r_sol2 
     else:
-        a_n = a_sol2 + w 
+        a_n = a_sol2 + w2 
         y_n = r_sol2 + v 
 
 
@@ -243,20 +263,6 @@ ax[0].legend(loc='upper right')
 ax[1].legend(loc='upper right')
 fig.tight_layout()
 plt.show()
-#%%
-# DISCRETIZATION
-
-# rewrite system with noise
-A = np.array([[0,1],[0,0]])
-B = np.array([[0],[1]])
-L = np.array([[0],[1]])
-C = np.array([1,0])
-D = 0
-kf = Kalman_Filter(A,B,L,C,D,Q,R)
-
-# Discretize system
-T = dt 
-A_d, B_d, Q_d, R_d = kf.discretize(T)
 
 #%%
 # KALMAN FILTER
@@ -325,15 +331,23 @@ plt.rc('grid', linestyle='--')
 
 # Plot data
 ax[0].plot(t_steps, error_x1, label='estimated position', color='C0')
-ax[0].plot(t_steps, sigma3_1, label = r'$3\sigma_1$', color = 'C1')
-ax[0].plot(t_steps, -sigma3_1, color = 'C1')
+#ax[0].plot(t_steps, sigma3_1, label = r'$3\sigma_1$', color = 'C1')
+#ax[0].plot(t_steps, -sigma3_1, color = 'C1')
+ax[0].fill_between(t_steps, sigma3_1, -sigma3_1, label = r'$3\sigma_1$', color = 'lightblue')
 ax[1].plot(t_steps, error_x2, label='estimated velocity', color='C0')
-ax[1].plot(t_steps, sigma3_2, label = r'$3\sigma_2$', color = 'C1')
-ax[1].plot(t_steps, -sigma3_2, color = 'C1')
+#ax[1].plot(t_steps, sigma3_2, label = r'$3\sigma_2$', color = 'C1')
+#ax[1].plot(t_steps, -sigma3_2, color = 'C1')
+ax[1].fill_between(t_steps, sigma3_2, -sigma3_2, label = r'$3\sigma_2$', color = 'lightblue')
 
 ax[0].legend(loc='upper right')
 ax[1].legend(loc='upper right')
 plt.show()
+
+# %%
+# NEES TEST
+# Cholesky factorization on P = L@L.T
+# u = Le, d_2 = (u.T)@u
+# mean = E[u.T u] = k
 
 # %%
 
@@ -342,7 +356,6 @@ plt.show()
 # Can predict at every step but can only correct every 10 steps
 
 # Initial guesses
-
 x_hat_k2, P_hat_k2, sigma3_k2 = kf.filter(a_n, y_n,x_hat0, P_hat0, steps, 10, 1)
 
 # Extract out individual states
@@ -396,12 +409,14 @@ plt.rc('grid', linestyle='--')
 
 # Plot data
 ax[0].plot(t_steps, error_x1_2, label='estimated position', color='C0')
-ax[0].plot(t_steps, sigma3_1_2, label = r'$3\sigma_1$', color = 'C1')
-ax[0].plot(t_steps, -sigma3_1_2, color = 'C1')
+ax[0].fill_between(t_steps, sigma3_1_2, -sigma3_1_2, label = r'$3\sigma_1$', color = 'lightblue')
 ax[1].plot(t_steps, error_x2_2, label='estimated velocity', color='C0')
-ax[1].plot(t_steps, sigma3_2_2, label = r'$3\sigma_2$', color = 'C1')
-ax[1].plot(t_steps, -sigma3_2_2, color = 'C1')
+ax[1].fill_between(t_steps, sigma3_2_2, -sigma3_2_2, label = r'$3\sigma_2$', color = 'lightblue')
 
 ax[0].legend(loc='upper right')
 ax[1].legend(loc='upper right')
 plt.show()
+
+# %%
+# NEES TEST WITH DIFFERENT SAMPLING FREQUENCY
+

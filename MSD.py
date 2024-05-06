@@ -57,4 +57,56 @@ class MSD_System:
         D = np.zeros((2,1))
         return control.StateSpace(A,B,C,D)
     
+
+class MSD_NL_System:
+    # This is a mass spring damper system with a nonlinear measurement model 
+    def __init__(self, m, c, k, A, w, h, d):
+        #constructor
+        self.m = m
+        self.c = c
+        self.k = k
+        self.A = A
+        self.w = w
+        self.h = h
+        self.d = d
+
+    def f1(self, t, x):
+        """Method for integration of ODE.
+
+        dot_x = f(x, 0) given x0, given no input f(t)
+        """
+        # Extract states.
+        dot_r = x[1]
+        ddot_r = (-self.c*x[1]-self.k*x[0])/self.m 
+        dot_x = np.vstack((dot_r, ddot_r))
+        return dot_x.ravel()  # flatten the array
+        #return np.array([[dot_r], [ddot_r]])
     
+    def f2(self, t, x):
+        """Method for integration of ODE.
+
+        dot_x = f(x, u) given x0, given a sinusoidal input
+        """
+        # Extract states.
+        dot_r = x[1]
+        ddot_r = ((-self.c*x[1]-self.k*x[0])/self.m) + self.A*np.sin(self.w*t)
+        dot_x = np.vstack((dot_r, ddot_r))
+        return dot_x.ravel()  # flatten the array
+        #return np.array([[dot_r], [ddot_r]])
+
+    def y(self, t, x):
+        return np.sqrt((x+self.d)**2 + self.h**2)
+    
+    def input(self, t):
+        return self.A*np.sin(self.w*t) 
+    
+    def state_space(self):
+        # ground truth state space
+        A = np.array([[0,1], [-self.k/self.m, -self.c/self.m]])
+        B = np.array([[0],[1]])
+        C = np.array([self.d/(np.sqrt(self.d**2 + self.h**2)), 0]) # linearized continuous measurement model
+        D = np.array([0])
+        return control.StateSpace(A,B,C,D)
+
+
+ 
