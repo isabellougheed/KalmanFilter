@@ -4,7 +4,9 @@ import control
 from matplotlib import pyplot as plt
 from scipy import integrate
 from scipy import linalg
+from scipy import stats
 from MSD import MSD_System
+import random
 
 """
 This file is to set up the Kalman filter for the mass spring damper system set up in MSD.py
@@ -29,6 +31,9 @@ class Kalman_Filter:
         self.R_d = 0
 
     def discretize(self,T):
+        """
+        This method discretizes a state space system using Steven Dahdah's method.
+        """
         # building large matrix
         xi = np.block([[A, L@(Q*(L.T)), np.zeros((2,2)), np.zeros((2,1))], [np.zeros((2,2)), -A.T, np.zeros((2,2)), np.zeros((2,1))], [np.zeros((2,2)), np.zeros((2,2)), A, B], [np.zeros((1,2)),np.zeros((1,2)),np.zeros((1,2)),np.zeros((1,1))]])
         upsilon = linalg.expm(xi*T) 
@@ -50,7 +55,29 @@ class Kalman_Filter:
         self.R_d = R_d
         return A_d, B_d, Q_d, R_d
     
+    def predict(self, x_prior, P_prior, a):
+        """
+        This method takes a prior state estimation, a prior covariance, and an acceleration measurement 
+        and returns the next predicted state and covariance.
+
+        x_k+1 = (A_k)(x_k) + (B_k)(u_k)
+
+        P_k+1 = (A_k)(P_k)(A_k).T + Q_k
+        """
+        xk_p = A_d @ x_prior + B_d*a #x_k+1 = (A_k)(x_k) + (B_k)(u_k)
+        Pk_p = A_d @ P_prior @ A_d.T + Q_d  #P_k+1 = (A_k)(P_k)(A_k).T + Q_k
+        return xk_p, Pk_p
+    
+    """
+    DO CORRECT METHOD HERE!!
+    """
+    
     def filter(self, a_n, y_n, x_hat0, P_hat0, steps, frequ_a, frequ_y):
+        """ 
+        This method represents the Kalman filter as whole. It predicts and corrects over all time steps.
+        
+        This method returns estimated states, covariances, and the sigma3 bounds at each time step.
+        """
         # Making a list to add all estimated states and covariances at each step into
         x_hat_k = []
         P_hat_k = []
@@ -61,6 +88,7 @@ class Kalman_Filter:
         P_hat_k.append(P_hat0)
         U0, S0, V0 = np.linalg.svd(P_hat0)
         sigma3_k.append(S0)
+        # FIX THIS !!!!
 
         #Setting up x_k-1, P_k-1
         x_k_1 = x_hat0
@@ -68,8 +96,7 @@ class Kalman_Filter:
 
         for i in range(0, steps-1):
             # prediction
-            xk_p = A_d @ x_k_1 + B_d*a_n[i] #x_k+1 = (A_k)(x_k) + (B_k)(u_k)
-            Pk_p = A_d @ P_k_1 @ A_d.T + Q_d  #P_k+1 = (A_k)(P_k)(A_k).T + Q_k
+            xk_p, Pk_p = self.predict(x_k_1, P_k_1, a_n[i])
 
             # correction
             K_k = Pk_p @ (C.reshape(1, -1)).T *(C @ Pk_p @ (C.reshape(1, -1)).T + R_d)**(-1) 
@@ -100,7 +127,33 @@ class Kalman_Filter:
             sigma3_k.append(3*np.sqrt(S))
 
         return x_hat_k, P_hat_k, sigma3_k
+    
+    def nees(self, estimated_states, true_states, P):
+        """
+        This method takes an array of all estimated states at all time steps, an array of all covariance at all time steps, and an array of all true states at all time steps.
 
+        This method returns the mahalanobis distances at each iteration in an array.
+        """
+
+        d_2 = np.zeros(len(estimated_states))
+        for i in range(len(estimated_states)):
+            e = estimated_states[i] - true_states[i]
+            d_2[i] = (e.T)@(np.linalg.inv(P[i]))@e
+
+        #stats.chi2.ppf(0.95)
+
+        """
+        - get a new d at each time step
+        - should converge to 2 with one trajectory bc 2 dof
+        - converge to 2 * N, num trials with monte carlo (divide, so averages out to 1)
+        - random covariance and IC centered around mean
+        - bounds are 2.5 and 97.5% --> 95
+
+        - 100 trials
+        - Nees over confident above condience bound, underconfident below lower boumd
+
+        """
+        return d_2
 
 # %%
 # GENERATING GROUND TRUTH DATA FOR NO INPUT
@@ -113,6 +166,7 @@ t = np.arange(t_start, t_end, dt) # t has 10000 steps
 
 #set up system
 m = 2.5
+m = 5
 k = 30
 c = 3
 A = 1
@@ -199,9 +253,9 @@ A = np.array([[0,1],[0,0]])
 B = np.array([[0],[1]])
 L = np.array([[0],[1]])
 C = np.array([1,0])
-D = 0   # position noise variance
-Q = 0.01  # acceleration noise variance
-R = 0.001
+D = 0  
+Q = 0.1  # acceleration noise variance
+R = 0.0001 # position noise variance
 kf = Kalman_Filter(A,B,L,C,D,Q,R)
 
 # Discretize system
@@ -328,6 +382,7 @@ ax[1].set_ylabel(r'$e_x2(t)$ (units/s)')
 plt.rc('lines', linewidth=2)
 plt.rc('axes', grid=True)
 plt.rc('grid', linestyle='--')
+plt.rc("text", usetex=True)
 
 # Plot data
 ax[0].plot(t_steps, error_x1, label='estimated position', color='C0')
@@ -345,9 +400,51 @@ plt.show()
 
 # %%
 # NEES TEST
-# Cholesky factorization on P = L@L.T
-# u = Le, d_2 = (u.T)@u
-# mean = E[u.T u] = k
+true_states = np.column_stack((r_sol, dotr_sol))
+steps = int((t_end-t_start)/dt) # 10000 steps in 10 s range with dt = 1e-3
+
+d_2 = np.zeros(len(true_states))
+
+N = 100
+for i in range(N):
+    x_hat0 = np.array([[5 + random.uniform(-1,1)], [0 + random.uniform(-1,1)]])
+    P_hat0 = np.eye(2,2) + np.array([[1 - random.random()/10, 0], [0, 1 - random.random()/10]])
+    x_hat_k, P_hat_k, sigma3_k = kf.filter(a_n, y_n,x_hat0, P_hat0, steps, 1, 1)
+    d_2_i = kf.nees(x_hat_k, true_states, P_hat_k)
+    d_2 = d_2 + d_2_i
+
+d_2 = d_2/(N)
+alpha = 1 - 0.95
+lower_confidence = alpha/2
+upper_confidence = 1 - alpha/2
+lower_bound = stats.chi2.ppf(lower_confidence, df=2)
+upper_bound = stats.chi2.ppf(upper_confidence, df=2)
+#d_2 = kf.nees(x_hat_k, true_states, P_hat_k)
+fig, ax = plt.subplots()
+ax.plot(t, d_2)
+plt.axhline(2, color = 'r', linestyle = '--')
+plt.axhline(lower_bound, color = 'gray', linestyle = '--')
+plt.axhline(upper_bound, color = 'gray', linestyle = '--')
+plt.show()
+
+#stats.chi2.ppf(0.95)
+"""
+fig, ax = plt.subplots()
+ax.plot(t, d_2)
+plt.show()
+"""
+
+"""
+- get a new d at each time step
+- should converge to 2 with one trajectory bc 2 dof
+- converge to 2 * N, num trials with monte carlo (divide, so averages out to 1)
+- random covariance and IC centered around mean
+- bounds are 2.5 and 97.5% --> 95
+
+- 100 trials
+- Nees over confident above condience bound, underconfident below lower boumd
+
+"""
 
 # %%
 

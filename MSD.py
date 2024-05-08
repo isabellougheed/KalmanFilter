@@ -94,7 +94,7 @@ class MSD_NL_System:
         return dot_x.ravel()  # flatten the array
         #return np.array([[dot_r], [ddot_r]])
 
-    def y(self, t, x):
+    def g(self, x):
         return np.sqrt((x+self.d)**2 + self.h**2)
     
     def input(self, t):
@@ -107,6 +107,8 @@ class MSD_NL_System:
         C = np.array([self.d/(np.sqrt(self.d**2 + self.h**2)), 0]) # linearized continuous measurement model
         D = np.array([0])
         return control.StateSpace(A,B,C,D)
+    
+    
 
 
  
