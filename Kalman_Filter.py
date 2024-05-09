@@ -83,6 +83,7 @@ class Kalman_Filter:
         P_hat_k = []
         sigma3_k = []
 
+
         # initializing lists with initial guesses
         x_hat_k.append(x_hat0.flatten())
         P_hat_k.append(P_hat0)
@@ -192,9 +193,16 @@ a_sol = (1/m)*( - k*r_sol - c*dotr_sol)
 # PLOTTING TRAJECTORY WITH ZERO INPUT
 
 # Plotting parameters
-plt.rc('lines', linewidth=2)
-plt.rc('axes', grid=True)
-plt.rc('grid', linestyle='--')
+#plt.rc('lines', linewidth=2)
+#plt.rc('axes', grid=True)
+#plt.rc('grid', linestyle='--')
+plt.rc("figure", figsize = (11.5, 8.5))
+plt.rc("font", family = "Times New Roman", size = 20)
+plt.rc("axes", grid = True, labelsize = 20)
+plt.rc("text", usetex=True)
+plt.rc("text.latex", preamble=r"\usepackage{amsmath}")
+plt.rc("grid", linestyle = "--")
+plt.rcParams["lines.markersize"] = 2
 
 # Plot the response of x1, x2 vs. time
 fig, ax = plt.subplots()
@@ -204,7 +212,7 @@ ax.set_ylabel(r'$x(t)$ (units)')
 ax.plot(t_sol, r_sol, label='$x_1(t)$', color='C0')
 ax.plot(t_sol, dotr_sol, label='$x_2(t)$', color='C1')
 ax.legend(loc='upper right')
-fig.tight_layout()
+#fig.tight_layout()
 plt.show()
 
 #%%
@@ -228,10 +236,11 @@ a_sol2 = (1/m)*(u - k*r_sol2 - c*dotr_sol2)
 # PLOTTING TRAJECTORY WITH SINUSOIDAL INPUT
 
 # Plotting parameters
+"""
 plt.rc('lines', linewidth=2)
 plt.rc('axes', grid=True)
 plt.rc('grid', linestyle='--')
-
+"""
 # Plot the response of x1, x2 vs. time
 fig, ax = plt.subplots()
 ax.set_xlabel(r'$t$ (s)')
@@ -241,7 +250,7 @@ ax.plot(t_sol2, r_sol2, label='$x_1(t)$', color='C0')
 ax.plot(t_sol2, dotr_sol2, label='$x_2(t)$', color='C1')
 ax.plot(t_sol2, u, label='$u(t)$', color='C2')
 ax.legend(loc='upper right')
-fig.tight_layout()
+#fig.tight_layout()
 plt.show()
 
 
@@ -254,8 +263,8 @@ B = np.array([[0],[1]])
 L = np.array([[0],[1]])
 C = np.array([1,0])
 D = 0  
-Q = 0.1  # acceleration noise variance
-R = 0.0001 # position noise variance
+Q = 0.01  # acceleration noise variance
+R = 0.001 # position noise variance
 kf = Kalman_Filter(A,B,L,C,D,Q,R)
 
 # Discretize system
@@ -267,46 +276,45 @@ A_d, B_d, Q_d, R_d = kf.discretize(T)
 include_noise = True # toggle to turn on and off noise to test the filter
 include_input = False
 
+
 w1 = np.sqrt(Q_d[0][0])*np.random.randn(len(t))
 w2 = np.sqrt(Q_d[0][1])*np.random.randn(len(t))
 w = np.block([[w1], [w2]])
-#w = np.sqrt(Q)*np.random.randn(len(t))
+
+Q_c = Q/dt
+w_d = np.sqrt(Q_c)*np.random.randn(len(t))
 v = np.sqrt(R_d)*np.random.randn(len(t))
 if include_input:
-    if not include_noise:
-        w = np.zeros((len(t),1))
-        v = np.zeros((len(t),1))
-        a_n = a_sol  #change input depending on if zero input or sinusoidal
-        y_n = r_sol 
-    else:
-        a_n = a_sol + w2 
-        y_n = r_sol + v 
-else:
     a_sol = a_sol2
     r_sol = r_sol2
     if not include_noise:
-        w = np.zeros((len(t),1))
-        v = np.zeros((len(t),1))
-        a_n = a_sol2  #change input depending on if zero input or sinusoidal
+        a_n = a_sol2 
         y_n = r_sol2 
     else:
-        a_n = a_sol2 + w2 
+        a_n = a_sol2 + w_d
         y_n = r_sol2 + v 
+else:
+    if not include_noise:
+        a_n = a_sol
+        y_n = r_sol 
+    else:
+        a_n = a_sol + w_d
+        y_n = r_sol + v 
 
 
 #%%
-# PLOTTING TRAJECTORY WITH SINUSOIDAL INPUT
+# PLOTTING TRAJECTORY WITH NOISE
 
 fig, ax = plt.subplots(2, 1)
 # Format axes
+"""
 for a in np.ravel(ax):
     a.set_xlabel(r'$t$ (s)')
+"""
+ax[0].set_xlabel(r'$t$ (s)')
+ax[1].set_xlabel(r'$t$ (s)')
 ax[0].set_ylabel(r'$x(t)$ (units)')
-ax[1].set_ylabel(r'$a(t)$ (units/s^2)')
-
-plt.rc('lines', linewidth=2)
-plt.rc('axes', grid=True)
-plt.rc('grid', linestyle='--')
+ax[1].set_ylabel(r'$a(t)$ (units/$s^2$)')
 
 # Plot data
 ax[0].plot(t, y_n, label='noisy position measurement', color='C1')
@@ -315,7 +323,7 @@ ax[1].plot(t, a_n, label='noisy acceleration measurement', color='C1')
 ax[1].plot(t, a_sol, label='true acceleration', color='C0')
 ax[0].legend(loc='upper right')
 ax[1].legend(loc='upper right')
-fig.tight_layout()
+#fig.tight_layout()
 plt.show()
 
 #%%
@@ -327,10 +335,10 @@ plt.show()
 
 """
 # Initial guesses
-#x_hat0 = np.array([[5], [0]]) # true value
-#P_hat0 = np.eye(2,2)
-x_hat0 = np.array([[4], [1]]) # somewhat close to true value
-P_hat0 = np.array([[0.9,0], [0,0.9]])
+x_hat0 = np.array([[5], [0]]) # true value
+P_hat0 = np.eye(2,2)
+#x_hat0 = np.array([[4], [1]]) # somewhat close to true value
+#P_hat0 = np.array([[0.9,0], [0,0.9]])
 steps = int((t_end-t_start)/dt) # 10000 steps in 10 s range with dt = 1e-3
 x_hat_k, P_hat_k, sigma3_k = kf.filter(a_n, y_n,x_hat0, P_hat0, steps, 1, 1)
 
@@ -348,11 +356,11 @@ for a in np.ravel(ax):
     a.set_xlabel(r'$t$ (s)')
 ax[0].set_ylabel(r'$x_1(t)$ (units)')
 ax[1].set_ylabel(r'$x_2(t)$ (units/s)')
-
+"""
 plt.rc('lines', linewidth=2)
 plt.rc('axes', grid=True)
 plt.rc('grid', linestyle='--')
-
+"""
 # Plot data
 t_steps = np.arange(steps) * dt
 #ax[0].plot(t, y_n, label='noisy position measurement', color='C1')
@@ -364,7 +372,7 @@ ax[1].plot(t_steps, x2_hat, label='estimated velocity', color='C0')
 
 ax[0].legend(loc='upper right')
 ax[1].legend(loc='upper right')
-fig.tight_layout()
+#fig.tight_layout()
 plt.show()
 
 # %%
@@ -376,14 +384,14 @@ fig, ax = plt.subplots(2, 1)
 # Format axes
 for a in np.ravel(ax):
     a.set_xlabel(r'$t$ (s)')
-ax[0].set_ylabel(r'$e_x1(t)$ (units)')
-ax[1].set_ylabel(r'$e_x2(t)$ (units/s)')
-
+ax[0].set_ylabel(r'$e_{x_1}(t)$ (units)')
+ax[1].set_ylabel(r'$e_{x_2}(t)$ (units/s)')
+"""
 plt.rc('lines', linewidth=2)
 plt.rc('axes', grid=True)
 plt.rc('grid', linestyle='--')
 plt.rc("text", usetex=True)
-
+"""
 # Plot data
 ax[0].plot(t_steps, error_x1, label='estimated position', color='C0')
 #ax[0].plot(t_steps, sigma3_1, label = r'$3\sigma_1$', color = 'C1')
@@ -404,9 +412,10 @@ true_states = np.column_stack((r_sol, dotr_sol))
 steps = int((t_end-t_start)/dt) # 10000 steps in 10 s range with dt = 1e-3
 
 d_2 = np.zeros(len(true_states))
-
+random.seed(random.randint(1,10))
 N = 100
 for i in range(N):
+    random.seed(random.randint(1,10))
     x_hat0 = np.array([[5 + random.uniform(-1,1)], [0 + random.uniform(-1,1)]])
     P_hat0 = np.eye(2,2) + np.array([[1 - random.random()/10, 0], [0, 1 - random.random()/10]])
     x_hat_k, P_hat_k, sigma3_k = kf.filter(a_n, y_n,x_hat0, P_hat0, steps, 1, 1)
@@ -421,10 +430,13 @@ lower_bound = stats.chi2.ppf(lower_confidence, df=2)
 upper_bound = stats.chi2.ppf(upper_confidence, df=2)
 #d_2 = kf.nees(x_hat_k, true_states, P_hat_k)
 fig, ax = plt.subplots()
-ax.plot(t, d_2)
-plt.axhline(2, color = 'r', linestyle = '--')
-plt.axhline(lower_bound, color = 'gray', linestyle = '--')
+ax.set_xlabel(r'$t$ (s)')
+ax.set_ylabel(r'${d_M}^2$')
+ax.plot(t, d_2, label = r'$\bar{{d_M}^2}$')
+plt.axhline(2, color = 'r', linestyle = '--', label = r'$E[{{d_M}^2}], k=2$')
+plt.axhline(lower_bound, color = 'gray', linestyle = '--', label = r'${{d_M}^2}^{*}, k=2$')
 plt.axhline(upper_bound, color = 'gray', linestyle = '--')
+ax.legend(loc='upper right')
 plt.show()
 
 #stats.chi2.ppf(0.95)
@@ -469,11 +481,11 @@ for a in np.ravel(ax):
     a.set_xlabel(r'$t$ (s)')
 ax[0].set_ylabel(r'$x_1(t)$ (units)')
 ax[1].set_ylabel(r'$x_2(t)$ (units/s)')
-
+"""
 plt.rc('lines', linewidth=2)
 plt.rc('axes', grid=True)
 plt.rc('grid', linestyle='--')
-
+"""
 # Plot data
 t_steps = np.arange(steps) * dt
 #ax[0].plot(t, y_n, label='noisy position measurement', color='C1')
@@ -485,7 +497,7 @@ ax[1].plot(t_steps, x2_hat2, label='estimated velocity', color='C0')
 
 ax[0].legend(loc='upper right')
 ax[1].legend(loc='upper right')
-fig.tight_layout()
+#fig.tight_layout()
 plt.show()
 
 # %%
@@ -499,11 +511,11 @@ for a in np.ravel(ax):
     a.set_xlabel(r'$t$ (s)')
 ax[0].set_ylabel(r'$e_x1(t)$ (units)')
 ax[1].set_ylabel(r'$e_x2(t)$ (units/s)')
-
+"""
 plt.rc('lines', linewidth=2)
 plt.rc('axes', grid=True)
 plt.rc('grid', linestyle='--')
-
+"""
 # Plot data
 ax[0].plot(t_steps, error_x1_2, label='estimated position', color='C0')
 ax[0].fill_between(t_steps, sigma3_1_2, -sigma3_1_2, label = r'$3\sigma_1$', color = 'lightblue')

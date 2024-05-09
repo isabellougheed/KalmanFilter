@@ -95,7 +95,8 @@ class MSD_NL_System:
         #return np.array([[dot_r], [ddot_r]])
 
     def g(self, x):
-        return np.sqrt((x+self.d)**2 + self.h**2)
+        x_1 = x[0]
+        return np.sqrt((x_1+self.d)**2 + self.h**2)
     
     def input(self, t):
         return self.A*np.sin(self.w*t) 
