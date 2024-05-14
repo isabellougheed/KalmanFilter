@@ -13,9 +13,10 @@ You don't need to run this file, it is just used by Kalman_Filter.py
 
 """
 
+
 class MSD_System:
     def __init__(self, m, c, k, A, w):
-        #constructor
+        # constructor
         self.m = m
         self.c = c
         self.k = k
@@ -29,11 +30,11 @@ class MSD_System:
         """
         # Extract states.
         dot_r = x[1]
-        ddot_r = (-self.c*x[1]-self.k*x[0])/self.m 
+        ddot_r = (-self.c * x[1] - self.k * x[0]) / self.m
         dot_x = np.vstack((dot_r, ddot_r))
         return dot_x.ravel()  # flatten the array
-        #return np.array([[dot_r], [ddot_r]])
-    
+        # return np.array([[dot_r], [ddot_r]])
+
     def f2(self, t, x):
         """Method for integration of ODE.
 
@@ -41,27 +42,29 @@ class MSD_System:
         """
         # Extract states.
         dot_r = x[1]
-        ddot_r = ((-self.c*x[1]-self.k*x[0])/self.m) + self.A*np.sin(self.w*t)
+        ddot_r = ((-self.c * x[1] - self.k * x[0]) / self.m) + self.A * np.sin(
+            self.w * t
+        )
         dot_x = np.vstack((dot_r, ddot_r))
         return dot_x.ravel()  # flatten the array
-        #return np.array([[dot_r], [ddot_r]])
+        # return np.array([[dot_r], [ddot_r]])
 
     def input(self, t):
-        return self.A*np.sin(self.w*t) 
-    
+        return self.A * np.sin(self.w * t)
+
     def state_space(self):
         # ground truth state space
-        A = np.array([[0,1], [-self.k/self.m, -self.c/self.m]])
-        B = np.array([[0],[1]])
-        C = np.eye(2,2)
-        D = np.zeros((2,1))
-        return control.StateSpace(A,B,C,D)
-    
+        A = np.array([[0, 1], [-self.k / self.m, -self.c / self.m]])
+        B = np.array([[0], [1]])
+        C = np.eye(2, 2)
+        D = np.zeros((2, 1))
+        return control.StateSpace(A, B, C, D)
+
 
 class MSD_NL_System:
-    # This is a mass spring damper system with a nonlinear measurement model 
+    # This is a mass spring damper system with a nonlinear measurement model
     def __init__(self, m, c, k, A, w, h, d):
-        #constructor
+        # constructor
         self.m = m
         self.c = c
         self.k = k
@@ -77,11 +80,11 @@ class MSD_NL_System:
         """
         # Extract states.
         dot_r = x[1]
-        ddot_r = (-self.c*x[1]-self.k*x[0])/self.m 
+        ddot_r = (-self.c * x[1] - self.k * x[0]) / self.m
         dot_x = np.vstack((dot_r, ddot_r))
         return dot_x.ravel()  # flatten the array
-        #return np.array([[dot_r], [ddot_r]])
-    
+        # return np.array([[dot_r], [ddot_r]])
+
     def f2(self, t, x):
         """Method for integration of ODE.
 
@@ -89,27 +92,26 @@ class MSD_NL_System:
         """
         # Extract states.
         dot_r = x[1]
-        ddot_r = ((-self.c*x[1]-self.k*x[0])/self.m) + self.A*np.sin(self.w*t)
+        ddot_r = ((-self.c * x[1] - self.k * x[0]) / self.m) + self.A * np.sin(
+            self.w * t
+        )
         dot_x = np.vstack((dot_r, ddot_r))
         return dot_x.ravel()  # flatten the array
-        #return np.array([[dot_r], [ddot_r]])
+        # return np.array([[dot_r], [ddot_r]])
 
     def g(self, x):
         x_1 = x[0]
-        return np.sqrt((x_1+self.d)**2 + self.h**2)
-    
+        return np.sqrt((x_1 + self.d) ** 2 + self.h**2)
+
     def input(self, t):
-        return self.A*np.sin(self.w*t) 
-    
+        return self.A * np.sin(self.w * t)
+
     def state_space(self):
         # ground truth state space
-        A = np.array([[0,1], [-self.k/self.m, -self.c/self.m]])
-        B = np.array([[0],[1]])
-        C = np.array([self.d/(np.sqrt(self.d**2 + self.h**2)), 0]) # linearized continuous measurement model
+        A = np.array([[0, 1], [-self.k / self.m, -self.c / self.m]])
+        B = np.array([[0], [1]])
+        C = np.array(
+            [self.d / (np.sqrt(self.d**2 + self.h**2)), 0]
+        )  # linearized continuous measurement model
         D = np.array([0])
-        return control.StateSpace(A,B,C,D)
-    
-    
-
-
- 
+        return control.StateSpace(A, B, C, D)
